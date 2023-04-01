@@ -1,0 +1,34 @@
+---
+title: "Stock Prices Analysis"
+author: "Ari An"
+output: html_document
+---
+
+```{r setup, include=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, warning=FALSE}
+library(quantmod)
+```
+
+
+```{r}
+plotGenerator <- function(year, symbolBasket) {
+  start_date <- as.Date(paste0(year-1, '-08-14'))
+  end_date <- as.Date(paste0(year, '-08-14'))
+  getSymbols(symbolBasket, src = 'yahoo', from = start_date, to = end_date)
+  
+  
+  chartSeries(`CVX`, theme="white", TA="addVo();addBBands();addCCI()", subset = paste0(year-1, '-08-14::', year, '-08-14'))
+  chartSeries(`AAPL`, theme="black", TA="addVo();addBBands();addCCI()", subset = paste0(year-1, '-08-14::', year, '-08-14'))
+  
+}
+
+plotGenerator(2022, c('CVX', 'AAPL'))
+
+#XOM_2015_adjusted
+
+```
+
+

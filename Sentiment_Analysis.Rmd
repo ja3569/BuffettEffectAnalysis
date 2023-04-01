@@ -1,0 +1,83 @@
+---
+title: "Data Mining on Warren Buffett's Annual Letters to Shareholders"
+author: "Ari An"
+output: html_document
+---
+
+```{r setup, include=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+library(jsonlite)
+library(udpipe)
+library(stopwords)
+library(dplyr)
+library(tidytext)
+library(data.table)
+
+stopwds <- stopwords()
+dl <- udpipe_download_model(language = "english")
+eng_model <- udpipe_load_model(file = dl$file_model)
+```
+
+Load Warren Buffett's Annual Letters to Shareholders in recent 10 years.
+```{r}
+buffett <- jsonlite::read_json("data/combined_letters.json")
+length(buffett)
+```
+Convert Letters to Word Count Matrix.
+```{r, include = FALSE}
+word_bags <- list()
+
+for (fn in names(buffett)) {
+    letter <- buffett[[fn]]
+    letter <- tolower(letter)
+    year_pattern <- "([^0-9])(19|20)[0-9]{2}([^0-9])"
+    cleaned_letter <- gsub(year_pattern, "\\1YEAR\\3", letter)
+    cleaned_letter <- gsub(year_pattern, "\\1YEAR\\3", cleaned_letter)
+    num_pattern <- "\\$?[0-9]+[,\\/\\.]?[0-9]*"
+    cleaned_letter <- gsub(num_pattern, "NUMBERS", cleaned_letter)
+    link_pattern <- "[^ ]+www\\.[^ ]+"
+    cleaned_letter <- gsub(link_pattern, "LINKS", cleaned_letter)
+    cleaned_letter <- gsub("X\\.", "", cleaned_letter)  
+    cleaned_letter <- gsub("\\.", "", cleaned_letter) 
+    sentences <- strsplit(cleaned_letter, "\n")
+    udpipe_out <- udpipe_annotate(
+        eng_model, x = unlist(sentences),
+        tagger = 'default', parser = 'none'
+    )
+    lemmatization <- as.data.frame(udpipe_out)
+    word_counts <- table(lemmatization$lemma)
+    word_bags[[fn]] <- as.data.frame(as.list(word_counts))
+    rm(lemmatization)
+    gc()
+}
+
+tf_mat <- bind_rows(word_bags)
+
+tf_mat <- tf_mat[, !grepl("X\\.", colnames(tf_mat))]
+tf_mat <- tf_mat[, nchar(names(tf_mat)) > 3]
+tf_mat <- tf_mat[, !names(tf_mat) %in% stopwds]
+tf_mat[is.na(tf_mat)] <- 0
+row.names(tf_mat) <- 1:dim(tf_mat)[1]
+tf_mat <- mutate_all(tf_mat, function(x) as.numeric(as.character(x)))
+tf_mat
+```
+
+```{r}
+tf_mat$maxword <- apply(tf_mat,1,max)
+tf_mat <- mutate_all(tf_mat, function(x) as.numeric(as.character(x)))
+normalized_df <- tf_mat/tf_mat$maxword
+normalized_df <- within(normalized_df, rm("maxword"))
+tf <- transpose(normalized_df)
+row.names(tf) <- colnames(normalized_df)
+colnames(tf) <- row.names(normalized_df)
+idf <- log(ncol(tf) / (rowSums(tf != 0)))
+idf <- diag(idf)
+tf_idf <- crossprod(as.matrix(tf), idf)
+colnames(tf_idf) <- rownames(tf)
+tfidf_matrix <- tf_idf #matrix
+tfidf_df <- data.frame(tfidf_matrix)
+tfidf_df
+```
